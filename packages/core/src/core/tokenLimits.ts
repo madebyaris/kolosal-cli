@@ -21,6 +21,7 @@ const LIMITS = {
   '64k': 65_536,
   '128k': 131_072,
   '200k': 200_000, // vendor-declared decimal (OpenAI / Anthropic use 200k)
+  '205k': 205_000, // MiniMax declared limit
   '256k': 262_144,
   '512k': 524_288,
   '1m': 1_048_576,
@@ -103,7 +104,7 @@ const PATTERNS: Array<[RegExp, TokenCount]> = [
   [/^claude-opus-4.*$/, LIMITS['1m']],
 
   // -------------------
-  // Alibaba / Qwen
+  // Alibaba / Qwen (Default: 262K context)
   // -------------------
   // Commercial Qwen3-Coder-Plus: 1M token context
   [/^qwen3-coder-plus(-.*)?$/, LIMITS['1m']], // catches "qwen3-coder-plus" and date variants
@@ -125,21 +126,30 @@ const PATTERNS: Array<[RegExp, TokenCount]> = [
   // Open-source long-context Qwen2.5-1M
   [/^qwen2\.5-1m.*$/, LIMITS['1m']],
 
-  // Standard Qwen2.5: 128K
-  [/^qwen2\.5.*$/, LIMITS['128k']],
+  // Standard Qwen2.5: 262K (256K)
+  [/^qwen2\.5.*$/, LIMITS['256k']],
+
+  // Qwen3 general models: 262K (256K)
+  // Matches: qwen3-30b-a3b, qwen3-32b, qwen3-72b, etc.
+  [/^qwen3-\d+b.*$/, LIMITS['256k']], // Parameter-sized models like qwen3-30b-a3b
+  [/^qwen3.*$/, LIMITS['256k']],
 
   // Studio commercial Qwen-Plus / Qwen-Flash / Qwen-Turbo
   [/^qwen-plus-latest$/, LIMITS['1m']], // Commercial latest: 1M
-  [/^qwen-plus.*$/, LIMITS['128k']], // Standard: 128K
+  [/^qwen-plus.*$/, LIMITS['256k']], // Standard: 262K
   [/^qwen-flash-latest$/, LIMITS['1m']],
-  [/^qwen-turbo.*$/, LIMITS['128k']],
+  [/^qwen-flash.*$/, LIMITS['256k']], // Standard: 262K
+  [/^qwen-turbo.*$/, LIMITS['256k']], // 262K
 
   // Kolosal Vision Models
   [/^qwen3-vl-plus$/, LIMITS['256k']], // Qwen3-VL-Plus: 256K input
-  [/^qwen-vl-max.*$/, LIMITS['128k']],
+  [/^qwen-vl-max.*$/, LIMITS['256k']], // 262K
 
-  // Generic vision-model: same as qwen-vl-max (128K token context)
-  [/^vision-model$/, LIMITS['128k']],
+  // Generic vision-model: same as qwen-vl-max (262K token context)
+  [/^vision-model$/, LIMITS['256k']],
+
+  // Fallback for any other Qwen models: 262K
+  [/^qwen.*$/, LIMITS['256k']],
 
   // -------------------
   // ByteDance Seed-OSS (512K)
@@ -147,20 +157,41 @@ const PATTERNS: Array<[RegExp, TokenCount]> = [
   [/^seed-oss.*$/, LIMITS['512k']],
 
   // -------------------
-  // Zhipu GLM
+  // Zhipu GLM (200K context)
   // -------------------
-  [/^glm-4\.5v.*$/, LIMITS['64k']],
-  [/^glm-4\.5-air.*$/, LIMITS['128k']],
-  [/^glm-4\.5.*$/, LIMITS['128k']],
+  [/^glm-4\.5v.*$/, LIMITS['64k']], // vision models have smaller context
+  [/^glm-4\.6.*$/, LIMITS['200k']], // GLM-4.6 series: 200K
+  [/^glm-4\.5.*$/, LIMITS['200k']], // GLM-4.5 series: 200K
+  [/^glm-4.*$/, LIMITS['200k']], // GLM-4 series: 200K
+  [/^chatglm.*$/, LIMITS['200k']], // ChatGLM: 200K
 
   // -------------------
-  // DeepSeek / GPT-OSS / Kimi / Llama & Mistral examples
+  // Kimi K2 (Moonshot AI) - 262K context
+  // -------------------
+  [/^kimi-k2.*$/, LIMITS['256k']], // Kimi K2: 262K
+  [/^kimi.*$/, LIMITS['256k']], // All Kimi models: 262K
+  [/^moonshot.*$/, LIMITS['256k']], // Moonshot models: 262K
+
+  // -------------------
+  // MiniMax - 205K context
+  // -------------------
+  [/^minimax.*$/, LIMITS['205k']], // MiniMax: 205K
+  [/^abab.*$/, LIMITS['205k']], // MiniMax ABAB series: 205K
+
+  // -------------------
+  // Maverick / Meta Llama - 131K context
+  // -------------------
+  [/^maverick.*$/, LIMITS['128k']], // Maverick: 131K (128K)
+  [/^mavrick.*$/, LIMITS['128k']], // Alternate spelling
+  [/^llama-4-scout.*$/, LIMITS['10m'] as unknown as TokenCount], // ultra-long variants
+  [/^llama.*$/, LIMITS['128k']], // Llama models: 131K (128K)
+
+  // -------------------
+  // DeepSeek / GPT-OSS / Mistral
   // -------------------
   [/^deepseek-r1.*$/, LIMITS['128k']],
   [/^deepseek-v3(?:\.1)?.*$/, LIMITS['128k']],
-  [/^kimi-k2-instruct.*$/, LIMITS['128k']],
   [/^gpt-oss.*$/, LIMITS['128k']],
-  [/^llama-4-scout.*$/, LIMITS['10m'] as unknown as TokenCount], // ultra-long variants - handle carefully
   [/^mistral-large-2.*$/, LIMITS['128k']],
 ];
 

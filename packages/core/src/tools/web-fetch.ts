@@ -22,8 +22,9 @@ import {
   Kind,
   ToolConfirmationOutcome,
 } from './tools.js';
+import { webContentCache, SearchCache } from '../utils/searchCache.js';
 
-const URL_FETCH_TIMEOUT_MS = 10000;
+const URL_FETCH_TIMEOUT_MS = 8000; // Reduced from 10s for faster response
 const MAX_CONTENT_LENGTH = 100000;
 
 /**
@@ -68,28 +69,43 @@ class WebFetchToolInvocation extends BaseToolInvocation<
     }
 
     try {
-      console.debug(`[WebFetchTool] Fetching content from: ${url}`);
-      const response = await fetchWithTimeout(url, URL_FETCH_TIMEOUT_MS);
+      // Check cache for the raw content
+      const cacheKey = SearchCache.generateKey(url);
+      let textContent = webContentCache.get(cacheKey);
+      let cached = false;
 
-      if (!response.ok) {
-        const errorMessage = `Request failed with status code ${response.status} ${response.statusText}`;
-        console.error(`[WebFetchTool] ${errorMessage}`);
-        throw new Error(errorMessage);
+      if (textContent) {
+        console.debug(`[WebFetchTool] Cache hit for URL: ${url}`);
+        cached = true;
+      } else {
+        const startTime = Date.now();
+        console.debug(`[WebFetchTool] Fetching content from: ${url}`);
+        const response = await fetchWithTimeout(url, URL_FETCH_TIMEOUT_MS);
+
+        if (!response.ok) {
+          const errorMessage = `Request failed with status code ${response.status} ${response.statusText}`;
+          console.error(`[WebFetchTool] ${errorMessage}`);
+          throw new Error(errorMessage);
+        }
+
+        console.debug(`[WebFetchTool] Successfully fetched content from ${url}`);
+        const html = await response.text();
+        textContent = convert(html, {
+          wordwrap: false,
+          selectors: [
+            { selector: 'a', options: { ignoreHref: true } },
+            { selector: 'img', format: 'skip' },
+          ],
+        }).substring(0, MAX_CONTENT_LENGTH);
+
+        // Cache the converted text content
+        webContentCache.set(cacheKey, textContent);
+        
+        const elapsed = Date.now() - startTime;
+        console.debug(
+          `[WebFetchTool] Converted HTML to text (${textContent.length} chars) in ${elapsed}ms`,
+        );
       }
-
-      console.debug(`[WebFetchTool] Successfully fetched content from ${url}`);
-      const html = await response.text();
-      const textContent = convert(html, {
-        wordwrap: false,
-        selectors: [
-          { selector: 'a', options: { ignoreHref: true } },
-          { selector: 'img', format: 'skip' },
-        ],
-      }).substring(0, MAX_CONTENT_LENGTH);
-
-      console.debug(
-        `[WebFetchTool] Converted HTML to text (${textContent.length} characters)`,
-      );
 
       const geminiClient = this.config.getGeminiClient();
       const fallbackPrompt = `The user requested the following: "${this.params.prompt}".
@@ -115,17 +131,42 @@ ${textContent}
         `[WebFetchTool] Successfully processed content from ${this.params.url}`,
       );
 
+      const cacheIndicator = cached ? ' (cached content)' : '';
       return {
         llmContent: resultText,
-        returnDisplay: `Content from ${this.params.url} processed successfully.`,
+        returnDisplay: `Content from ${this.params.url} processed successfully${cacheIndicator}.`,
       };
     } catch (e) {
       const error = e as Error;
-      const errorMessage = `Error during fetch for ${url}: ${error.message}`;
+      const errorMsg = error.message || 'Unknown error';
+      // Check for cause property (ES2022+)
+      const errorCause = (error as Error & { cause?: unknown }).cause;
+      const causeMsg = errorCause instanceof Error ? `: ${errorCause.message}` : '';
+      
+      const errorMessage = `Error during fetch for ${url}: ${errorMsg}${causeMsg}`;
       console.error(`[WebFetchTool] ${errorMessage}`, error);
+      
+      // Provide more helpful error hints based on error type
+      let errorHint = '';
+      const fullErrorMsg = `${errorMsg}${causeMsg}`.toLowerCase();
+      
+      if (fullErrorMsg.includes('timeout') || fullErrorMsg.includes('etimedout')) {
+        errorHint = ' Try again or check if the URL is accessible.';
+      } else if (fullErrorMsg.includes('econnrefused')) {
+        errorHint = ' The server refused the connection.';
+      } else if (fullErrorMsg.includes('enotfound') || fullErrorMsg.includes('getaddrinfo')) {
+        errorHint = ' Could not resolve the hostname. Check the URL.';
+      } else if (fullErrorMsg.includes('certificate') || fullErrorMsg.includes('ssl') || fullErrorMsg.includes('cert')) {
+        errorHint = ' SSL/TLS certificate issue. The site may have an invalid certificate.';
+      } else if (fullErrorMsg.includes('fetch failed')) {
+        errorHint = ' Network request failed. This could be due to SSL issues, network problems, or the site blocking automated requests.';
+      } else if (fullErrorMsg.includes('econnreset')) {
+        errorHint = ' Connection was reset by the server.';
+      }
+      
       return {
-        llmContent: `Error: ${errorMessage}`,
-        returnDisplay: `Error: ${errorMessage}`,
+        llmContent: `Error: ${errorMessage}${errorHint}`,
+        returnDisplay: `Error: ${errorMsg}${errorHint}`,
         error: {
           message: errorMessage,
           type: ToolErrorType.WEB_FETCH_FALLBACK_FAILED,
@@ -145,7 +186,10 @@ ${textContent}
   override async shouldConfirmExecute(): Promise<
     ToolCallConfirmationDetails | false
   > {
-    if (this.config.getApprovalMode() === ApprovalMode.AUTO_EDIT) {
+    // Allow in PLAN mode since web fetch is read-only (just retrieves information)
+    if (this.config.getApprovalMode() === ApprovalMode.AUTO_EDIT ||
+        this.config.getApprovalMode() === ApprovalMode.YOLO ||
+        this.config.getApprovalMode() === ApprovalMode.PLAN) {
       return false;
     }
 

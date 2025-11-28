@@ -7,8 +7,9 @@
 import type React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../semantic-colors.js';
-import { shortenPath, tildeifyPath } from '@kolosal-ai/kolosal-ai-core';
+import { shortenPath, tildeifyPath, ApprovalMode } from '@kolosal-ai/kolosal-ai-core';
 import { ConsoleSummaryDisplay } from './ConsoleSummaryDisplay.js';
+import { ContextUsageDisplay } from './ContextUsageDisplay.js';
 import process from 'node:process';
 import path from 'node:path';
 import Gradient from 'ink-gradient';
@@ -32,6 +33,8 @@ interface FooterProps {
   nightly: boolean;
   vimMode?: string;
   isTrustedFolder?: boolean;
+  /** Current approval mode (for YOLO/Plan indicators) */
+  approvalMode?: ApprovalMode;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -48,6 +51,7 @@ export const Footer: React.FC<FooterProps> = ({
   nightly,
   vimMode,
   isTrustedFolder,
+  approvalMode,
 }) => {
   const { columns: terminalWidth } = useTerminalSize();
 
@@ -58,6 +62,20 @@ export const Footer: React.FC<FooterProps> = ({
   const displayPath = isNarrow
     ? path.basename(tildeifyPath(targetDir))
     : shortenPath(tildeifyPath(targetDir), pathLength);
+
+  // Determine mode indicator
+  const getModeIndicator = () => {
+    if (approvalMode === ApprovalMode.YOLO) {
+      return <Text color={theme.status.error} bold> [YOLO]</Text>;
+    }
+    if (approvalMode === ApprovalMode.PLAN) {
+      return <Text color={theme.status.warning} bold> [PLAN]</Text>;
+    }
+    if (approvalMode === ApprovalMode.AUTO_EDIT) {
+      return <Text color={theme.status.success}> [AUTO]</Text>;
+    }
+    return null;
+  };
 
   return (
     <Box
@@ -89,9 +107,10 @@ export const Footer: React.FC<FooterProps> = ({
             {' ' + (debugMessage || '--debug')}
           </Text>
         )}
+        {getModeIndicator()}
       </Box>
 
-      {/* Middle Section: Centered Trust/Sandbox Info */}
+      {/* Middle Section: Context Usage and Trust/Sandbox Info */}
       <Box
         flexGrow={isNarrow ? 0 : 1}
         alignItems="center"
@@ -99,28 +118,35 @@ export const Footer: React.FC<FooterProps> = ({
         display="flex"
         paddingX={isNarrow ? 0 : 1}
         paddingTop={isNarrow ? 1 : 0}
+        gap={1}
       >
+        {/* Context Window Usage Display */}
+        <ContextUsageDisplay
+          promptTokenCount={promptTokenCount}
+          model={model}
+          compact={isNarrow}
+          showProgressBar={!isNarrow}
+        />
+        
+        {/* Trust/Sandbox indicators */}
         {isTrustedFolder === false ? (
-          <Text color={theme.status.warning}>untrusted</Text>
+          <Text color={theme.status.warning}>| untrusted</Text>
         ) : process.env['SANDBOX'] &&
           process.env['SANDBOX'] !== 'sandbox-exec' ? (
           <Text color="green">
-            {process.env['SANDBOX'].replace(/^gemini-(?:cli-)?/, '')}
+            | {process.env['SANDBOX'].replace(/^gemini-(?:cli-)?/, '')}
           </Text>
         ) : process.env['SANDBOX'] === 'sandbox-exec' ? (
           <Text color={theme.status.warning}>
-            macOS Seatbelt{' '}
+            | macOS Seatbelt{' '}
             <Text color={theme.text.secondary}>
               ({process.env['SEATBELT_PROFILE']})
             </Text>
           </Text>
-        ) : (
-          <Text color={theme.status.error}>
-          </Text>
-        )}
+        ) : null}
       </Box>
 
-      {/* Right Section: Gemini Label and Console Summary */}
+      {/* Right Section: Model Label and Console Summary */}
       <Box alignItems="center" paddingTop={isNarrow ? 1 : 0}>
         <Text color={theme.text.accent}>
           {isNarrow ? '' : ' '}

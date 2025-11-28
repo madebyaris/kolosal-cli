@@ -71,7 +71,8 @@
     "clean": "cross-env NODE_OPTIONS=\"--no-deprecation\" node scripts/clean.js"
   },
   "bin": {
-    "kolosal": "bundle/gemini.js"
+    "kolosal": "bundle/gemini.js",
+    "kolosal-dev": "bundle/gemini.js"
   },
   "pkg": {
     "assets": [

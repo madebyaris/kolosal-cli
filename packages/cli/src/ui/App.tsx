@@ -149,7 +149,6 @@ import { useKittyKeyboardProtocol } from './hooks/useKittyKeyboardProtocol.js';
 import { keyMatchers, Command } from './keyMatchers.js';
 import {
   upsertSavedModelEntry,
-  removeSavedModelEntry,
   getCurrentModelAuthType,
   deriveOpenAIEnvConfig,
   findKolosalApiKey,
@@ -3589,6 +3588,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
               nightly={nightly}
               vimMode={vimModeEnabled ? vimMode : undefined}
               isTrustedFolder={isTrustedFolderState}
+              approvalMode={showAutoAcceptIndicator}
             />
           )}
         </Box>

@@ -272,10 +272,16 @@ IMPORTANT: Always use the ${ToolNames.TODO_WRITE} tool to plan and track tasks t
 - **Security First:** Always apply security best practices. Never introduce code that exposes, logs, or commits secrets, API keys, or other sensitive information.
 
 ## Tool Usage
+- **CRITICAL - Parameter Types:** All tool parameters must be the correct type as specified in the tool schema:
+  - String parameters (like 'content', 'old_string', 'new_string', 'command', 'path') must be plain strings, NOT objects or arrays.
+  - The 'content' parameter for '${ToolNames.WRITE_FILE}' must be the complete file content as a single string.
+  - The 'old_string' and 'new_string' for '${ToolNames.EDIT}' must be plain strings.
+  - The 'command' for '${ToolNames.SHELL}' must be a string, and 'is_background' is required (boolean).
+  - NEVER pass JSON objects or arrays where strings are expected.
 - **File Paths:** Always use absolute paths when referring to files with tools like '${ToolNames.READ_FILE}' or '${ToolNames.WRITE_FILE}'. Relative paths are not supported. You must provide an absolute path.
 - **Parallelism:** Execute multiple independent tool calls in parallel when feasible (i.e. searching the codebase).
 - **Command Execution:** Use the '${ToolNames.SHELL}' tool for running shell commands, remembering the safety rule to explain modifying commands first.
-- **Background Processes:** Use background processes (via \`&\`) for commands that are unlikely to stop on their own, e.g. \`node server.js &\`. If unsure, ask the user.
+- **Background Processes:** Use background processes (via \`&\`) for commands that are unlikely to stop on their own, e.g. \`node server.js &\`. If unsure, ask the user. Always set 'is_background' to true for background commands.
 - **Interactive Commands:** Try to avoid shell commands that are likely to require user interaction (e.g. \`git rebase -i\`). Use non-interactive versions of commands (e.g. \`npm init -y\` instead of \`npm init\`) when available, and otherwise remind the user that interactive shell commands are not supported and may cause hangs until canceled by the user.
 - **Task Management:** Use the '${ToolNames.TODO_WRITE}' tool proactively for complex, multi-step tasks to track progress and provide visibility to users. This tool helps organize work systematically and ensures no requirements are missed.
 - **Subagent Delegation:** When doing file search, prefer to use the '${ToolNames.TASK}' tool in order to reduce context usage. You should proactively use the '${ToolNames.TASK}' tool with specialized agents when the task at hand matches the agent's description.
@@ -476,19 +482,19 @@ model: true
 
 <example>
 user: start the server implemented in server.js
-model: [tool_call: ${ToolNames.SHELL} for 'node server.js &' because it must run in the background]
+model: [tool_call: ${ToolNames.SHELL} with command="node server.js", is_background=true]
 </example>
 
 <example>
 user: Refactor the auth logic in src/auth.py to use the requests library instead of urllib.
 model: Okay, I can refactor 'src/auth.py'.
 First, I'll analyze the code and check for a test safety net before planning any changes.
-[tool_call: ${ToolNames.GLOB} for path 'tests/test_auth.py']
-[tool_call: ${ToolNames.READ_FILE} for path '/path/to/tests/test_auth.py' with offset 0 and limit 10]
+[tool_call: ${ToolNames.GLOB} with pattern="tests/test_auth.py"]
+[tool_call: ${ToolNames.READ_FILE} with path="/path/to/tests/test_auth.py"]
 (After analysis)
 Great, 'tests/test_auth.py' exists and covers the core authentication logic. With this safety net in place, I can safely plan the refactoring.
 I'll also confirm 'requests' is a dependency.
-[tool_call: ${ToolNames.READ_FILE} for path '/path/to/requirements.txt']
+[tool_call: ${ToolNames.READ_FILE} with path="/path/to/requirements.txt"]
 (After analysis)
 Looks good, 'requests' is available.
 
@@ -498,9 +504,9 @@ Here's the plan:
 3.  Remove the old 'urllib' import.
 4.  Run the project's linter and tests to verify the changes.
 
-[tool_call: ${ToolNames.EDIT} for path 'src/auth.py' replacing old content with new content]
+[tool_call: ${ToolNames.EDIT} with file_path="/path/to/src/auth.py", old_string="import urllib", new_string="import requests"]
 Refactoring complete. Running verification...
-[tool_call: ${ToolNames.SHELL} for 'ruff check src/auth.py && pytest']
+[tool_call: ${ToolNames.SHELL} with command="ruff check src/auth.py && pytest", is_background=false]
 (After verification passes)
 All checks passed. This is a stable checkpoint.
 Would you like me to write a commit message and commit these changes?
@@ -515,13 +521,13 @@ model: I can run \`rm -rf /path/to/project/temp\`. This will permanently delete 
 user: Write tests for someFile.ts
 model:
 Okay, I can write those tests. First, I'll read someFile.ts to understand its functionality.
-[tool_call: ${ToolNames.READ_FILE} for path '/path/to/someFile.ts']
+[tool_call: ${ToolNames.READ_FILE} with path="/path/to/someFile.ts"]
 Now I'll look for existing or related test files to understand current testing conventions and dependencies.
-[tool_call: ${ToolNames.READ_MANY_FILES} for paths ['**/*.test.ts', 'src/**/*.spec.ts']]
+[tool_call: ${ToolNames.READ_MANY_FILES} with paths=["**/*.test.ts", "src/**/*.spec.ts"]]
 (After reviewing existing tests and the file content)
-[tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/someFile.test.ts']
+[tool_call: ${ToolNames.WRITE_FILE} with path="/path/to/someFile.test.ts", content="// test file content as a plain string"]
 I've written the tests. Now I'll run the project's test command to verify them.
-[tool_call: ${ToolNames.SHELL} for 'npm run test']
+[tool_call: ${ToolNames.SHELL} with command="npm run test", is_background=false]
 (After verification passes)
 All checks passed. This is a stable checkpoint.
 </example>
@@ -529,7 +535,7 @@ All checks passed. This is a stable checkpoint.
 <example>
 user: Where are all the 'app.config' files in this project? I need to check their settings.
 model:
-[tool_call: ${ToolNames.GLOB} for pattern './**/app.config']
+[tool_call: ${ToolNames.GLOB} with pattern="./**/app.config"]
 (Assuming GlobTool returns a list of paths like ['/path/to/moduleA/app.config', '/path/to/moduleB/app.config'])
 I found the following 'app.config' files:
 - /path/to/moduleA/app.config
@@ -555,9 +561,8 @@ user: start the server implemented in server.js
 model: 
 <tool_call>
 <function=${ToolNames.SHELL}>
-<parameter=command>
-node server.js &
-</parameter>
+<parameter=command>node server.js</parameter>
+<parameter=is_background>true</parameter>
 </function>
 </tool_call>
 </example>
@@ -621,9 +626,8 @@ src/auth.py
 Refactoring complete. Running verification...
 <tool_call>
 <function=${ToolNames.SHELL}>
-<parameter=command>
-ruff check src/auth.py && pytest
-</parameter>
+<parameter=command>ruff check src/auth.py && pytest</parameter>
+<parameter=is_background>false</parameter>
 </function>
 </tool_call>
 (After verification passes)
@@ -666,9 +670,8 @@ Now I'll look for existing or related test files to understand current testing c
 I've written the tests. Now I'll run the project's test command to verify them.
 <tool_call>
 <function=${ToolNames.SHELL}>
-<parameter=command>
-npm run test
-</parameter>
+<parameter=command>npm run test</parameter>
+<parameter=is_background>false</parameter>
 </function>
 </tool_call>
 (After verification passes)
@@ -768,11 +771,11 @@ Now I'll look for existing or related test files to understand current testing c
 </tool_call>
 (After reviewing existing tests and the file content)
 <tool_call>
-{"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/someFile.test.ts"}}
+{"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/someFile.test.ts", "content": "// test file content as a string"}}
 </tool_call>
 I've written the tests. Now I'll run the project's test command to verify them.
 <tool_call>
-{"name": "${ToolNames.SHELL}", "arguments": {"command": "npm run test"}}
+{"name": "${ToolNames.SHELL}", "arguments": {"command": "npm run test", "is_background": false}}
 </tool_call>
 (After verification passes)
 All checks passed. This is a stable checkpoint.
@@ -792,6 +795,297 @@ To help you check their settings, I can read their contents. Which one would you
 </example>
 `.trim();
 
+/**
+ * Tool call examples optimized for GLM-4 series (Zhipu AI)
+ * GLM-4 uses standard OpenAI-compatible function calling format
+ */
+const glmToolCallExamples = `
+# Examples (Tool Usage for GLM-4)
+IMPORTANT: All tool parameters must be the correct type - strings for string parameters, booleans for boolean parameters. Never pass objects or arrays where strings are expected.
+
+<example>
+user: 1 + 2
+assistant: 3
+</example>
+
+<example>
+user: start the server in server.js
+assistant: Starting the server in background mode.
+[Calls ${ToolNames.SHELL} with command="node server.js", is_background=true]
+</example>
+
+<example>
+user: Read the package.json file
+assistant: Let me read the package.json file.
+[Calls ${ToolNames.READ_FILE} with path="/path/to/package.json"]
+</example>
+
+<example>
+user: Find all TypeScript files in src
+assistant: Searching for TypeScript files.
+[Calls ${ToolNames.GLOB} with pattern="src/**/*.ts"]
+Found the following TypeScript files: [list results]
+</example>
+
+<example>
+user: Refactor auth.py to use requests library
+assistant: I'll refactor the authentication module.
+1. First, checking for existing tests
+[Calls ${ToolNames.GLOB} with pattern="tests/test_auth.py"]
+2. Reading the current implementation
+[Calls ${ToolNames.READ_FILE} with path="/path/to/src/auth.py"]
+3. Applying the changes
+[Calls ${ToolNames.EDIT} with file_path="/path/to/src/auth.py", old_string="old code as string", new_string="new code as string"]
+4. Running tests to verify
+[Calls ${ToolNames.SHELL} with command="pytest tests/test_auth.py", is_background=false]
+All tests passed. Refactoring complete.
+</example>
+`.trim();
+
+/**
+ * Tool call examples optimized for Kimi K2 (Moonshot AI)
+ * Kimi uses standard function calling with detailed reasoning
+ */
+const kimiToolCallExamples = `
+# Examples (Tool Usage for Kimi K2)
+IMPORTANT: All parameters must be the correct type. String parameters (content, old_string, new_string, command) must be plain strings, NOT objects or arrays. is_background is required for shell commands.
+
+<example>
+user: 1 + 2
+assistant: 3
+</example>
+
+<example>
+user: start the development server
+assistant: I'll start the development server for you.
+[Function call: ${ToolNames.SHELL}]
+Arguments: {"command": "npm run dev", "is_background": true}
+Server started in background.
+</example>
+
+<example>
+user: Show me the project structure
+assistant: Let me explore the project structure.
+[Function call: ${ToolNames.GLOB}]
+Arguments: {"pattern": "*"}
+Here's the project structure:
+- src/
+- tests/
+- package.json
+- README.md
+</example>
+
+<example>
+user: Fix the bug in utils.ts
+assistant: I'll analyze and fix the bug.
+Step 1: Reading the file
+[Function call: ${ToolNames.READ_FILE}]
+Arguments: {"path": "/path/to/src/utils.ts"}
+
+Step 2: Applying the fix
+[Function call: ${ToolNames.EDIT}]
+Arguments: {"file_path": "/path/to/src/utils.ts", "old_string": "const buggy = true;", "new_string": "const buggy = false;"}
+
+Step 3: Running tests
+[Function call: ${ToolNames.SHELL}]
+Arguments: {"command": "npm test", "is_background": false}
+
+Bug fixed and tests passing.
+</example>
+`.trim();
+
+/**
+ * Tool call examples optimized for MiniMax models
+ * MiniMax uses JSON-based function calling
+ */
+const minimaxToolCallExamples = `
+# Examples (Tool Usage for MiniMax)
+IMPORTANT: All parameters must be the correct type. String parameters (content, old_string, new_string, command) must be plain strings, NOT objects or arrays.
+
+<example>
+user: 1 + 2
+assistant: 3
+</example>
+
+<example>
+user: Run the build command
+assistant: Running the build.
+{"tool": "${ToolNames.SHELL}", "parameters": {"command": "npm run build", "is_background": false}}
+Build completed successfully.
+</example>
+
+<example>
+user: Read the configuration file
+assistant: Reading config.json.
+{"tool": "${ToolNames.READ_FILE}", "parameters": {"path": "/path/to/config.json"}}
+Here are the contents: [file contents]
+</example>
+
+<example>
+user: Search for TODO comments
+assistant: Searching for TODO comments in the codebase.
+{"tool": "${ToolNames.GREP}", "parameters": {"pattern": "TODO", "path": "src"}}
+Found the following TODOs: [results]
+</example>
+
+<example>
+user: Write a new file
+assistant: Creating the file.
+{"tool": "${ToolNames.WRITE_FILE}", "parameters": {"path": "/path/to/newfile.ts", "content": "// File content as a plain string\\nexport const hello = 'world';"}}
+File created successfully.
+</example>
+`.trim();
+
+/**
+ * Tool call examples optimized for Maverick (Meta AI models via third-party)
+ * Uses standard OpenAI-compatible format
+ */
+const maverickToolCallExamples = `
+# Examples (Tool Usage)
+IMPORTANT: All parameters must be the correct type. String parameters (content, old_string, new_string, command) must be plain strings, NOT objects or arrays.
+
+<example>
+user: 1 + 2
+assistant: 3
+</example>
+
+<example>
+user: Start the server
+assistant: Starting server in background.
+<function_call>
+{"name": "${ToolNames.SHELL}", "arguments": {"command": "node server.js", "is_background": true}}
+</function_call>
+</example>
+
+<example>
+user: Read main.py
+assistant: Reading the file.
+<function_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/main.py"}}
+</function_call>
+</example>
+
+<example>
+user: Find all Python files
+assistant: Searching for Python files.
+<function_call>
+{"name": "${ToolNames.GLOB}", "arguments": {"pattern": "**/*.py"}}
+</function_call>
+Found: [list of files]
+</example>
+
+<example>
+user: Implement a new feature in app.ts
+assistant: I'll implement the feature.
+1. Reading current code:
+<function_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/app.ts"}}
+</function_call>
+2. Writing the implementation:
+<function_call>
+{"name": "${ToolNames.EDIT}", "arguments": {"file_path": "/path/to/app.ts", "old_string": "// old code here", "new_string": "// new code here"}}
+</function_call>
+3. Testing:
+<function_call>
+{"name": "${ToolNames.SHELL}", "arguments": {"command": "npm test", "is_background": false}}
+</function_call>
+Feature implemented and tested.
+</example>
+`.trim();
+
+/**
+ * Tool call examples optimized for DeepSeek models
+ * DeepSeek uses JSON function calling format
+ */
+const deepseekToolCallExamples = `
+# Examples (Tool Usage for DeepSeek)
+IMPORTANT: All parameters must be the correct type. String parameters (content, old_string, new_string, command) must be plain strings, NOT objects or arrays.
+
+<example>
+user: 1 + 2
+assistant: 3
+</example>
+
+<example>
+user: start the server
+assistant: Starting server.
+\`\`\`json
+{"name": "${ToolNames.SHELL}", "arguments": {"command": "node server.js", "is_background": true}}
+\`\`\`
+</example>
+
+<example>
+user: Read package.json
+assistant: Reading package.json.
+\`\`\`json
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/package.json"}}
+\`\`\`
+Contents: [file contents]
+</example>
+
+<example>
+user: Refactor the auth module
+assistant: I'll refactor the authentication module step by step.
+
+1. First, let me read the current implementation:
+\`\`\`json
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/auth.ts"}}
+\`\`\`
+
+2. Now applying the refactoring:
+\`\`\`json
+{"name": "${ToolNames.EDIT}", "arguments": {"file_path": "/path/to/auth.ts", "old_string": "const oldCode = true;", "new_string": "const newCode = false;"}}
+\`\`\`
+
+3. Running tests:
+\`\`\`json
+{"name": "${ToolNames.SHELL}", "arguments": {"command": "npm test", "is_background": false}}
+\`\`\`
+
+Refactoring complete. All tests pass.
+</example>
+`.trim();
+
+/**
+ * Detects the model family from the model name string
+ */
+function detectModelFamily(model: string): string {
+  // Qwen family detection
+  if (/qwen[^-]*-coder/i.test(model)) return 'qwen-coder';
+  if (/qwen[^-]*-vl/i.test(model)) return 'qwen-vl';
+  if (/qwen/i.test(model)) return 'qwen';
+  if (/coder-model/i.test(model)) return 'qwen-coder';
+  if (/vision-model/i.test(model)) return 'qwen-vl';
+  
+  // GLM family (Zhipu AI)
+  if (/glm-4/i.test(model) || /glm-4\.5/i.test(model) || /glm-4\.6/i.test(model)) return 'glm';
+  if (/chatglm/i.test(model)) return 'glm';
+  
+  // Kimi K2 (Moonshot AI)
+  if (/kimi/i.test(model) || /moonshot/i.test(model)) return 'kimi';
+  
+  // MiniMax
+  if (/minimax/i.test(model) || /abab/i.test(model)) return 'minimax';
+  
+  // Maverick / Meta Llama variants
+  if (/maverick/i.test(model) || /mavrick/i.test(model)) return 'maverick';
+  if (/llama/i.test(model)) return 'maverick';
+  
+  // DeepSeek
+  if (/deepseek/i.test(model)) return 'deepseek';
+  
+  // Claude (Anthropic)
+  if (/claude/i.test(model)) return 'general';
+  
+  // GPT (OpenAI)
+  if (/gpt/i.test(model) || /o3/i.test(model) || /o4/i.test(model)) return 'general';
+  
+  // Gemini (Google)
+  if (/gemini/i.test(model)) return 'general';
+  
+  return 'general';
+}
+
 function getToolCallExamples(model?: string): string {
   // Check for environment variable override first
   const toolCallStyle = process.env['QWEN_CODE_TOOL_CALL_STYLE'];
@@ -801,6 +1095,16 @@ function getToolCallExamples(model?: string): string {
         return qwenCoderToolCallExamples;
       case 'qwen-vl':
         return qwenVlToolCallExamples;
+      case 'glm':
+        return glmToolCallExamples;
+      case 'kimi':
+        return kimiToolCallExamples;
+      case 'minimax':
+        return minimaxToolCallExamples;
+      case 'maverick':
+        return maverickToolCallExamples;
+      case 'deepseek':
+        return deepseekToolCallExamples;
       case 'general':
         return generalToolCallExamples;
       default:
@@ -811,23 +1115,27 @@ function getToolCallExamples(model?: string): string {
     }
   }
 
-  // Enhanced regex-based model detection
+  // Model-based detection
   if (model && model.length < 100) {
-    // Match qwen*-coder patterns (e.g., qwen3-coder, qwen2.5-coder, qwen-coder)
-    if (/qwen[^-]*-coder/i.test(model)) {
-      return qwenCoderToolCallExamples;
-    }
-    // Match qwen*-vl patterns (e.g., qwen-vl, qwen2-vl, qwen3-vl)
-    if (/qwen[^-]*-vl/i.test(model)) {
-      return qwenVlToolCallExamples;
-    }
-    // Match coder-model pattern (same as qwen3-coder)
-    if (/coder-model/i.test(model)) {
-      return qwenCoderToolCallExamples;
-    }
-    // Match vision-model pattern (same as qwen3-vl)
-    if (/vision-model/i.test(model)) {
-      return qwenVlToolCallExamples;
+    const family = detectModelFamily(model);
+    
+    switch (family) {
+      case 'qwen-coder':
+        return qwenCoderToolCallExamples;
+      case 'qwen-vl':
+        return qwenVlToolCallExamples;
+      case 'glm':
+        return glmToolCallExamples;
+      case 'kimi':
+        return kimiToolCallExamples;
+      case 'minimax':
+        return minimaxToolCallExamples;
+      case 'maverick':
+        return maverickToolCallExamples;
+      case 'deepseek':
+        return deepseekToolCallExamples;
+      default:
+        return generalToolCallExamples;
     }
   }
 

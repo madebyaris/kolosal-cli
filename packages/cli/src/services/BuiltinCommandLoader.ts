@@ -28,6 +28,7 @@ import { mcpCommand } from '../ui/commands/mcpCommand.js';
 import { memoryCommand } from '../ui/commands/memoryCommand.js';
 import { modelCommand } from '../ui/commands/modelCommand.js';
 import { modelDeleteCommand } from '../ui/commands/modelDeleteCommand.js';
+import { planCommand } from '../ui/commands/planCommand.js';
 import { privacyCommand } from '../ui/commands/privacyCommand.js';
 import { quitCommand, quitConfirmCommand } from '../ui/commands/quitCommand.js';
 import { restoreCommand } from '../ui/commands/restoreCommand.js';
@@ -38,6 +39,7 @@ import { terminalSetupCommand } from '../ui/commands/terminalSetupCommand.js';
 import { themeCommand } from '../ui/commands/themeCommand.js';
 import { toolsCommand } from '../ui/commands/toolsCommand.js';
 import { vimCommand } from '../ui/commands/vimCommand.js';
+import { yoloCommand } from '../ui/commands/yoloCommand.js';
 import { setupGithubCommand } from '../ui/commands/setupGithubCommand.js';
 
 /**
@@ -77,6 +79,7 @@ export class BuiltinCommandLoader implements ICommandLoader {
       memoryCommand,
       modelCommand,
       modelDeleteCommand,
+      planCommand,
       privacyCommand,
       quitCommand,
       quitConfirmCommand,
@@ -87,6 +90,7 @@ export class BuiltinCommandLoader implements ICommandLoader {
       toolsCommand,
       settingsCommand,
       vimCommand,
+      yoloCommand,
       setupGithubCommand,
       terminalSetupCommand,
     ];
