@@ -274,10 +274,12 @@ IMPORTANT: Always use the ${ToolNames.TODO_WRITE} tool to plan and track tasks t
 ## Tool Usage
 - **CRITICAL - Parameter Types:** All tool parameters must be the correct type as specified in the tool schema:
   - String parameters (like 'content', 'old_string', 'new_string', 'command', 'path') must be plain strings, NOT objects or arrays.
-  - The 'content' parameter for '${ToolNames.WRITE_FILE}' must be the complete file content as a single string.
-  - The 'old_string' and 'new_string' for '${ToolNames.EDIT}' must be plain strings.
+  - The 'content' parameter for '${ToolNames.WRITE_FILE}' must be the COMPLETE file content as a SINGLE STRING with newlines (\\n), NOT an array of lines.
+  - The 'old_string' and 'new_string' for '${ToolNames.EDIT}' must be plain strings, NOT arrays.
   - The 'command' for '${ToolNames.SHELL}' must be a string, and 'is_background' is required (boolean).
-  - NEVER pass JSON objects or arrays where strings are expected.
+  - NEVER pass JSON objects or arrays where strings are expected. This is a common error - always use strings!
+  - WRONG: {"content": ["line1", "line2"]} or {"content": {"text": "..."}}
+  - CORRECT: {"content": "line1\\nline2\\nline3"}
 - **File Paths:** Always use absolute paths when referring to files with tools like '${ToolNames.READ_FILE}' or '${ToolNames.WRITE_FILE}'. Relative paths are not supported. You must provide an absolute path.
 - **Parallelism:** Execute multiple independent tool calls in parallel when feasible (i.e. searching the codebase).
 - **Command Execution:** Use the '${ToolNames.SHELL}' tool for running shell commands, remembering the safety rule to explain modifying commands first.
@@ -541,6 +543,16 @@ I found the following 'app.config' files:
 - /path/to/moduleA/app.config
 - /path/to/moduleB/app.config
 To help you check their settings, I can read their contents. Which one would you like to start with, or should I read all of them?
+</example>
+
+<example>
+user: Update the README.md with project documentation
+model:
+First, let me read the current README to understand its structure.
+[tool_call: ${ToolNames.READ_FILE} with path="/path/to/README.md"]
+Now I'll write the updated README. Note: content must be a single string with \\n for newlines.
+[tool_call: ${ToolNames.WRITE_FILE} with path="/path/to/README.md", content="# Project Name\\n\\nA description of the project.\\n\\n## Installation\\n\\n\`\`\`bash\\nnpm install\\n\`\`\`\\n\\n## Usage\\n\\nRun the development server:\\n\\n\`\`\`bash\\nnpm run dev\\n\`\`\`"]
+README.md has been updated successfully.
 </example>
 `.trim();
 
@@ -933,6 +945,15 @@ user: Write a new file
 assistant: Creating the file.
 {"tool": "${ToolNames.WRITE_FILE}", "parameters": {"path": "/path/to/newfile.ts", "content": "// File content as a plain string\\nexport const hello = 'world';"}}
 File created successfully.
+</example>
+
+<example>
+user: Update README.md
+assistant: First reading the current file, then writing the update.
+{"tool": "${ToolNames.READ_FILE}", "parameters": {"path": "/path/to/README.md"}}
+Now updating with new content (content must be a single string, NOT an array):
+{"tool": "${ToolNames.WRITE_FILE}", "parameters": {"path": "/path/to/README.md", "content": "# Project\\n\\nDescription here.\\n\\n## Install\\n\\n\`\`\`bash\\nnpm install\\n\`\`\`"}}
+README updated.
 </example>
 `.trim();
 
